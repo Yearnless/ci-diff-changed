@@ -1,0 +1,47 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run smoke test
+        run: bash scripts/smoke.sh
+
+      - name: Count commits
+        id: count
+        run: echo "n=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Self-test (empty diff must report no changes)
+        id: diff_empty
+        uses: ./
+        with:
+          base-ref: 'HEAD'
+
+      - name: Assert empty result
+        env:
+          HAS: ${{ steps.diff_empty.outputs.has_changes }}
+          CHANGED: ${{ steps.diff_empty.outputs.changed_files }}
+        run: |
+          test "$HAS" = 'false'
+          test "$CHANGED" = '[]'
+
+      - name: Self-test (previous commit)
+        if: steps.count.outputs.n != '1'
+        id: diff
+        uses: ./
+        with:
+          base-ref: 'HEAD~1'
+          pattern: '\.(ts|js|sh|ya?ml)$'
+
+      - name: Assert non-empty result
+        if: steps.count.outputs.n != '1'
+        env:
+          HAS: ${{ steps.diff.outputs.has_changes }}
+        run: test "$HAS" = 'true'

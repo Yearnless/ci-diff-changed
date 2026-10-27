@@ -1,0 +1,36 @@
+name: 'CI Diff Changed Files'
+description: 'Outputs a JSON array of changed files between a base ref and HEAD, optionally filtered by a regex. No container, no runtime — just bash + git + jq.'
+author: 'Michael Gill'
+
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  base-ref:
+    description: 'Base commit, branch, or tag to compare against.'
+    required: false
+    default: 'origin/main'
+  pattern:
+    description: 'Optional ERE regex (grep -E). Only matching file paths are included. Empty matches everything.'
+    required: false
+    default: ''
+
+outputs:
+  changed_files:
+    description: 'JSON-encoded string array of matching changed file paths.'
+    value: ${{ steps.diff.outputs.changed_files }}
+  has_changes:
+    description: '"true" if at least one file matched, otherwise "false".'
+    value: ${{ steps.diff.outputs.has_changes }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Compute changed files
+      id: diff
+      shell: bash
+      env:
+        BASE_REF: ${{ inputs.base-ref }}
+        PATTERN: ${{ inputs.pattern }}
+      run: '"$GITHUB_ACTION_PATH"/scripts/diff.sh'
