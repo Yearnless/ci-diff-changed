@@ -37,6 +37,7 @@ jobs:
 | :--- | :--- | :--- |
 | `base-ref` | `origin/main` | Base commit, branch, or tag to compare against. Bare branches (`main`) and tags (`v1.2.3`) are fetched and resolved automatically. |
 | `pattern` | *(empty)* | ERE regex (`grep -E`). Only matching paths are included. Empty = all files. An **invalid regex fails the step** rather than silently matching nothing. |
+| `exclude` | *(empty)* | ERE regex (`grep -E`). Matching paths are **excluded** after `pattern` is applied. An **invalid regex fails the step**. |
 
 ## Outputs
 
@@ -44,7 +45,6 @@ jobs:
 | :--- | :--- |
 | `changed_files` | JSON-encoded string array of matching changed file paths. |
 | `has_changes` | `"true"` if at least one file matched, otherwise `"false"`. |
-
 ## Semantics
 
 - Added, copied, modified, renamed, and type-changed files count (`--diff-filter=ACMRT`); deletions are excluded.

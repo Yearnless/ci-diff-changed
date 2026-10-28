@@ -8,6 +8,7 @@ set -euo pipefail
 : "${GITHUB_OUTPUT:=/dev/stdout}"
 : "${BASE_REF:=origin/main}"
 : "${PATTERN:=}"
+: "${EXCLUDE:=}"
 
 cd "$GITHUB_WORKSPACE"
 
@@ -75,6 +76,18 @@ if [ -n "$PATTERN" ]; then
   [ "$rc" -eq 0 ] || FILTERED=""
 else
   FILTERED="$RAW_DIFF"
+fi
+
+if [ -n "$EXCLUDE" ]; then
+  set +e
+  FILTERED=$(printf '%s\n' "$FILTERED" | grep -E -v -- "$EXCLUDE")
+  rc=$?
+  set -e
+  if [ "$rc" -gt 1 ]; then
+    echo "ci-diff-changed: invalid exclude pattern [${EXCLUDE}]" >&2
+    exit 2
+  fi
+  [ "$rc" -eq 0 ] || FILTERED=""
 fi
 
 JSON_FILES=$(printf '%s\n' "$FILTERED" | sed '/^$/d' | jq -R -s -c 'split("\n")[:-1]')

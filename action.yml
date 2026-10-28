@@ -15,6 +15,10 @@ inputs:
     description: 'Optional ERE regex (grep -E). Only matching file paths are included. Empty matches everything.'
     required: false
     default: ''
+  exclude:
+    description: 'Optional ERE regex (grep -E). File paths matching this pattern are EXCLUDED from results. Applied after pattern filter.'
+    required: false
+    default: ''
 
 outputs:
   changed_files:
@@ -33,4 +37,5 @@ runs:
       env:
         BASE_REF: ${{ inputs.base-ref }}
         PATTERN: ${{ inputs.pattern }}
+        EXCLUDE: ${{ inputs.exclude }}
       run: 'bash "$GITHUB_ACTION_PATH"/scripts/diff.sh'
