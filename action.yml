@@ -33,4 +33,4 @@ runs:
       env:
         BASE_REF: ${{ inputs.base-ref }}
         PATTERN: ${{ inputs.pattern }}
-      run: '"$GITHUB_ACTION_PATH"/scripts/diff.sh'
+      run: 'bash "$GITHUB_ACTION_PATH"/scripts/diff.sh'

@@ -10,15 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Run smoke test
+      - name: Run smoke test (fixture repo: renames, spaces, first commit, tags, invalid regex)
         run: bash scripts/smoke.sh
 
-      - name: Count commits
-        id: count
-        run: echo "n=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Self-test (empty diff must report no changes)
+      - name: Self-test against live history (empty diff must report no changes)
         id: diff_empty
         uses: ./
         with:
@@ -32,16 +30,21 @@ jobs:
           test "$HAS" = 'false'
           test "$CHANGED" = '[]'
 
-      - name: Self-test (previous commit)
-        if: steps.count.outputs.n != '1'
+      - name: Self-test against previous commit
         id: diff
         uses: ./
         with:
           base-ref: 'HEAD~1'
-          pattern: '\.(ts|js|sh|ya?ml)$'
 
-      - name: Assert non-empty result
-        if: steps.count.outputs.n != '1'
+      - name: Assert output contract (JSON array + boolean flag, content-agnostic)
         env:
           HAS: ${{ steps.diff.outputs.has_changes }}
-        run: test "$HAS" = 'true'
+          CHANGED: ${{ steps.diff.outputs.changed_files }}
+        run: |
+          echo "$HAS" | grep -Eq '^(true|false)$'
+          echo "$CHANGED" | jq -e 'type == "array"' >/dev/null
+          if [ "$HAS" = 'true' ]; then
+            test "$(echo "$CHANGED" | jq 'length')" -gt 0
+          else
+            test "$(echo "$CHANGED" | jq 'length')" -eq 0
+          fi
