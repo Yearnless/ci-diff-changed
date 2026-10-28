@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0          # full history guarantees a merge base
-      - uses: noble2I/ci-diff-changed@v1
+      - uses: Yearnless/ci-diff-changed@v1
         id: diff
         with:
           base-ref: origin/main
