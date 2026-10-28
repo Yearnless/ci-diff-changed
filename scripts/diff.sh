@@ -63,31 +63,156 @@ else
   fi
 fi
 
-if [ -n "$PATTERN" ]; then
-  # rc 0 = matches; rc 1 = no matches; anything else = invalid regex → hard error.
-  set +e
-  FILTERED=$(printf '%s\n' "$RAW_DIFF" | grep -E -- "$PATTERN")
-  rc=$?
-  set -e
-  if [ "$rc" -gt 1 ]; then
-    echo "ci-diff-changed: invalid pattern [${PATTERN}]" >&2
-    exit 2
+# Detect if pattern is a glob (contains *, ?, **, [...]) or ERE regex
+# Glob metacharacters: *, ?, **, [...]
+# ERE-only metacharacters: |, ^, $, +, (, ), {, }
+is_glob_pattern() {
+  local pattern="$1"
+  # Check for glob metacharacters
+  [[ "$pattern" == *'*'* ]] || [[ "$pattern" == *'?'* ]] || [[ "$pattern" == *'['* ]]
+}
+
+# Convert glob pattern to ERE regex (supports **, *, ?, [...])
+glob_to_regex() {
+  local pattern="$1"
+  local regex=""
+  local i=0
+  local char=""
+  local next_char=""
+  while [ $i -lt ${#pattern} ]; do
+    char="${pattern:i:1}"
+    next_char="${pattern:i+1:1}"
+    case "$char" in
+      '*')
+        if [ "$next_char" = '*' ]; then
+          # ** matches any number of path segments (including zero)
+          regex+='(.*/)?'
+          i=$((i + 2))
+          continue
+        else
+          # * matches any characters except path separator
+          regex+='[^/]*'
+        fi
+        ;;
+      '?')
+        regex+='[^/]'
+        ;;
+      '[')
+        # Character class - copy as-is until matching ]
+        regex+='['
+        i=$((i + 1))
+        while [ $i -lt ${#pattern} ] && [ "${pattern:i:1}" != ']' ]; do
+          regex+="${pattern:i:1}"
+          i=$((i + 1))
+        done
+        if [ $i -lt ${#pattern} ]; then
+          regex+=']'
+        fi
+        ;;
+      '.')
+        regex+='\\.'
+        ;;
+      '\\')
+        regex+='\\\\'
+        ;;
+      '^')
+        regex+='\\^'
+        ;;
+      '$')
+        regex+='\\$'
+        ;;
+      '+')
+        regex+='\\+'
+        ;;
+      '(')
+        regex+='\\('
+        ;;
+      ')')
+        regex+='\\)'
+        ;;
+      '{')
+        regex+='\\{'
+        ;;
+      '}')
+        regex+='\\}'
+        ;;
+      '|')
+        regex+='\\|'
+        ;;
+      *)
+        regex+="$char"
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  # Anchor to full path
+  echo "^${regex}$"
+}
+
+# Determine if pattern is glob or ERE, then filter
+filter_by_pattern() {
+  local input="$1"
+  local pattern="$2"
+  local output=""
+
+  if is_glob_pattern "$pattern"; then
+    # Convert glob to regex
+    local regex=$(glob_to_regex "$pattern")
+    set +e
+    output=$(printf '%s\n' "$input" | grep -E -- "$regex")
+    rc=$?
+    set -e
+    if [ "$rc" -gt 1 ]; then
+      echo "ci-diff-changed: invalid glob pattern [${pattern}]" >&2
+      exit 2
+    fi
+    [ "$rc" -eq 0 ] || output=""
+  else
+    # Treat as ERE regex (original behavior)
+    set +e
+    output=$(printf '%s\n' "$input" | grep -E -- "$pattern")
+    rc=$?
+    set -e
+    if [ "$rc" -gt 1 ]; then
+      echo "ci-diff-changed: invalid regex pattern [${pattern}]" >&2
+      exit 2
+    fi
+    [ "$rc" -eq 0 ] || output=""
   fi
-  [ "$rc" -eq 0 ] || FILTERED=""
+  printf '%s' "$output"
+}
+
+# Apply pattern filter (supports both glob and ERE)
+if [ -n "$PATTERN" ]; then
+  FILTERED=$(filter_by_pattern "$RAW_DIFF" "$PATTERN")
 else
   FILTERED="$RAW_DIFF"
 fi
 
+# Apply exclude filter
 if [ -n "$EXCLUDE" ]; then
-  set +e
-  FILTERED=$(printf '%s\n' "$FILTERED" | grep -E -v -- "$EXCLUDE")
-  rc=$?
-  set -e
-  if [ "$rc" -gt 1 ]; then
-    echo "ci-diff-changed: invalid exclude pattern [${EXCLUDE}]" >&2
-    exit 2
+  if is_glob_pattern "$EXCLUDE"; then
+    EXCLUDE_REGEX=$(glob_to_regex "$EXCLUDE")
+    set +e
+    FILTERED=$(printf '%s\n' "$FILTERED" | grep -E -v -- "$EXCLUDE_REGEX")
+    rc=$?
+    set -e
+    if [ "$rc" -gt 1 ]; then
+      echo "ci-diff-changed: invalid exclude pattern [${EXCLUDE}]" >&2
+      exit 2
+    fi
+    [ "$rc" -eq 0 ] || FILTERED=""
+  else
+    set +e
+    FILTERED=$(printf '%s\n' "$FILTERED" | grep -E -v -- "$EXCLUDE")
+    rc=$?
+    set -e
+    if [ "$rc" -gt 1 ]; then
+      echo "ci-diff-changed: invalid exclude pattern [${EXCLUDE}]" >&2
+      exit 2
+    fi
+    [ "$rc" -eq 0 ] || FILTERED=""
   fi
-  [ "$rc" -eq 0 ] || FILTERED=""
 fi
 
 JSON_FILES=$(printf '%s\n' "$FILTERED" | sed '/^$/d' | jq -R -s -c 'split("\n")[:-1]')
